@@ -1,0 +1,562 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sichtwort-Spiel</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tone.js for audio synthesis -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>
+    
+    <!-- Google Fonts for a friendly look -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        /* Custom styles for the app */
+        body {
+            font-family: 'Nunito', sans-serif;
+            touch-action: manipulation; /* Prevents double tap zoom on mobile */
+        }
+        
+        /* Ensure the main container takes up the full screen height */
+        #app-container {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        /* Styling for the clickable word */
+        #word-display {
+            font-weight: 900; /* Extra bold */
+            font-size: 6rem;
+            cursor: pointer;
+            user-select: none; /* Prevents text selection */
+            transition: transform 0.1s ease-out;
+        }
+
+        #word-display:active {
+            transform: scale(0.95); /* Click effect */
+        }
+
+        /* Responsive font size for smaller screens */
+        @media (max-width: 640px) {
+            #word-display {
+                font-size: 4rem;
+            }
+        }
+        
+        /* Fireworks canvas styling */
+        #fireworks-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* Allows clicks to go through */
+            z-index: 9999;
+        }
+
+        /* Gear icon styling */
+        #settings-icon {
+            transition: transform 0.3s ease;
+        }
+        #settings-icon:hover {
+            transform: rotate(90deg);
+        }
+    </style>
+</head>
+<body class="bg-blue-50 text-gray-800">
+
+    <div id="app-container" class="container mx-auto p-4 md:p-8">
+        <!-- Header Section with Settings Icon -->
+        <header class="flex justify-between items-center mb-4">
+            <h1 class="text-3xl md:text-4xl font-bold text-blue-600">Sichtwort-Spiel</h1>
+            <button id="settings-icon" class="text-3xl">⚙️</button>
+        </header>
+        
+        <main class="flex-grow">
+            <!-- Start Screen -->
+            <div id="start-screen" class="text-center">
+                <div class="bg-white p-6 rounded-2xl shadow-lg">
+                    <h2 class="text-2xl font-bold mb-4">Bereit zum Lesen?</h2>
+                    <p class="mb-6">Klicke so schnell du kannst auf die Wörter, wenn du sie gelesen hast. Versuche, den Rekord zu brechen!</p>
+                    <button id="start-button" class="bg-green-500 hover:bg-green-600 text-white font-bold py-4 px-8 rounded-full text-2xl shadow-md transition-transform transform hover:scale-105">Start!</button>
+                </div>
+
+                <!-- High Score List -->
+                <div id="highscore-container" class="mt-8 bg-white p-6 rounded-2xl shadow-lg">
+                    <h3 class="text-xl font-bold text-yellow-500 mb-4">🏆 Bestenliste</h3>
+                    <ul id="highscore-list" class="space-y-2 text-left">
+                        <!-- High scores will be populated here by JavaScript -->
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Game Screen -->
+            <div id="game-screen" class="hidden text-center">
+                <div class="fixed top-4 left-4 right-4 bg-white/80 backdrop-blur-sm p-3 rounded-xl shadow-md">
+                    <div class="flex justify-between items-baseline">
+                        <div id="timer" class="text-3xl font-bold">0.00s</div>
+                        <div id="progress-indicator" class="text-lg text-gray-500">Wort 1 / 5</div>
+                    </div>
+                     <!-- Progress Bar -->
+                    <div id="progress-bar-container" class="w-full bg-gray-200 rounded-full h-4 mt-2 border border-gray-300">
+                        <div id="progress-bar" class="bg-green-500 h-full rounded-full transition-all duration-100" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="flex items-center justify-center" style="height: 60vh;">
+                    <div id="word-display" class="text-blue-700"></div>
+                </div>
+            </div>
+
+            <!-- Score Screen -->
+            <div id="score-screen" class="hidden text-center">
+                 <div class="bg-white p-8 rounded-2xl shadow-xl">
+                    <h2 id="score-title" class="text-3xl font-bold mb-2">Fertig!</h2>
+                    <p class="text-xl mb-4">Deine Zeit:</p>
+                    <p id="final-time" class="text-5xl font-extrabold text-blue-600 mb-8"></p>
+                    <button id="play-again-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-4 px-8 rounded-full text-2xl shadow-md transition-transform transform hover:scale-105">Nochmal spielen</button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="text-center text-gray-400 text-sm mt-8">
+            <p>Ein einfaches Spiel zum Üben von Sichtwörtern.</p>
+        </footer>
+    </div>
+
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-md flex flex-col">
+            <h2 class="text-2xl font-bold mb-6">Einstellungen</h2>
+            
+            <div class="mb-6">
+                <label for="num-words-input" class="block text-gray-700 text-sm font-bold mb-2">Wörter pro Runde:</label>
+                <input id="num-words-input" type="number" min="1" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            
+            <div class="mb-6 flex-grow flex flex-col">
+                <label for="word-list-editor" class="block text-gray-700 text-sm font-bold mb-2">Wortliste (ein Wort pro Zeile):</label>
+                <textarea id="word-list-editor" rows="10" class="shadow appearance-none border rounded-lg w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:ring-2 focus:ring-blue-500 flex-grow"></textarea>
+            </div>
+
+            <div class="flex justify-between items-center mt-4">
+                <button id="reset-scores-button" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-4 rounded-lg transition">Bestenliste zurücksetzen</button>
+                <button id="save-settings-button" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg transition">Speichern & Schließen</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom Alert/Confirm Modal -->
+    <div id="custom-modal" class="hidden fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[10000] p-4">
+        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm text-center">
+            <p id="custom-modal-text" class="text-lg mb-6"></p>
+            <div id="custom-modal-buttons" class="flex justify-center space-x-4">
+                <!-- Buttons will be injected here by JavaScript -->
+            </div>
+        </div>
+    </div>
+    
+    <!-- Fireworks Canvas -->
+    <canvas id="fireworks-canvas"></canvas>
+
+    <script type="module">
+        // --- DOM ELEMENTS ---
+        const startScreen = document.getElementById('start-screen');
+        const gameScreen = document.getElementById('game-screen');
+        const scoreScreen = document.getElementById('score-screen');
+        const startButton = document.getElementById('start-button');
+        const wordDisplay = document.getElementById('word-display');
+        const timerDisplay = document.getElementById('timer');
+        const progressIndicator = document.getElementById('progress-indicator');
+        const progressBar = document.getElementById('progress-bar');
+        const progressBarContainer = document.getElementById('progress-bar-container');
+        const finalTimeDisplay = document.getElementById('final-time');
+        const scoreTitle = document.getElementById('score-title');
+        const playAgainButton = document.getElementById('play-again-button');
+        const highscoreList = document.getElementById('highscore-list');
+        const settingsIcon = document.getElementById('settings-icon');
+        const settingsModal = document.getElementById('settings-modal');
+        const saveSettingsButton = document.getElementById('save-settings-button');
+        const numWordsInput = document.getElementById('num-words-input');
+        const wordListEditor = document.getElementById('word-list-editor');
+        const resetScoresButton = document.getElementById('reset-scores-button');
+        const customModal = document.getElementById('custom-modal');
+        const customModalText = document.getElementById('custom-modal-text');
+        const customModalButtons = document.getElementById('custom-modal-buttons');
+
+
+        // --- GAME STATE & SETTINGS ---
+        let gameState = 'idle'; // idle, playing, finished
+        let currentWordIndex = 0;
+        let wordsToPlay = [];
+        let startTime;
+        let timerInterval;
+        let highscores = [];
+        let settings = { numWords: 5 };
+        
+        const defaultWordList = ['der', 'die', 'das', 'und', 'in', 'zu', 'den', 'mit', 'von', 'auf', 'für', 'ist', 'im', 'nicht', 'ein', 'sie', 'es', 'aus', 'sich', 'nach', 'wie', 'bei', 'oder', 'wir', 'an', 'er', 'hat', 'dass', 'als', 'auch', 'sind', 'vor', 'man', 'durch', 'aber', 'so', 'nur', 'noch', 'kann', 'wird'];
+        let wordList = [...defaultWordList];
+
+        // --- AUDIO (Tone.js) ---
+        let tickTockSynth, tadaSynth;
+        let tickTockLoop;
+
+        function initializeAudio() {
+            tickTockSynth = new Tone.MembraneSynth({
+                octaves: 4, pitchDecay: 0.1, envelope: { attack: 0.001, decay: 0.2, sustain: 0 },
+            }).toDestination();
+            tadaSynth = new Tone.PolySynth(Tone.Synth, {
+                envelope: { attack: 0.01, decay: 0.2, sustain: 0.3, release: 0.2 },
+            }).toDestination();
+        }
+
+        function playTickTock() {
+            if (!tickTockSynth) return;
+            tickTockLoop = new Tone.Sequence((time, note) => {
+                tickTockSynth.triggerAttackRelease(note, "8n", time);
+            }, ["C2", "G1"], "4n").start(0);
+            Tone.Transport.start();
+        }
+
+        function stopTickTock() {
+            if (tickTockLoop) {
+                Tone.Transport.stop();
+                tickTockLoop.stop(0);
+                tickTockLoop.dispose();
+                tickTockLoop = null;
+            }
+        }
+        
+        function playTadaSound() {
+            if (!tadaSynth) return;
+            const now = Tone.now();
+            tadaSynth.triggerAttackRelease("C4", "8n", now);
+            tadaSynth.triggerAttackRelease("E4", "8n", now + 0.1);
+            tadaSynth.triggerAttackRelease("G4", "8n", now + 0.2);
+            tadaSynth.triggerAttackRelease("C5", "4n", now + 0.3);
+        }
+
+        // --- CUSTOM MODAL FUNCTIONS ---
+        function showAlert(message) {
+            customModalText.innerText = message;
+            customModalButtons.innerHTML = `<button id="modal-ok-btn" class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-2 px-6 rounded-lg">OK</button>`;
+            customModal.classList.remove('hidden');
+            document.getElementById('modal-ok-btn').onclick = () => customModal.classList.add('hidden');
+        }
+
+        function showConfirm(message, onConfirm) {
+            customModalText.innerText = message;
+            customModalButtons.innerHTML = `
+                <button id="modal-no-btn" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-6 rounded-lg">Nein</button>
+                <button id="modal-yes-btn" class="bg-red-500 hover:bg-red-600 text-white font-bold py-2 px-6 rounded-lg">Ja</button>
+            `;
+            customModal.classList.remove('hidden');
+            document.getElementById('modal-no-btn').onclick = () => customModal.classList.add('hidden');
+            document.getElementById('modal-yes-btn').onclick = () => {
+                onConfirm();
+                customModal.classList.add('hidden');
+            };
+        }
+
+        // --- LOCAL STORAGE ---
+        function saveHighscores() { localStorage.setItem('germanSightWordHighscores', JSON.stringify(highscores)); }
+        function loadHighscores() {
+            const stored = localStorage.getItem('germanSightWordHighscores');
+            if (stored) highscores = JSON.parse(stored);
+            updateHighscoreDisplay();
+        }
+        function saveSettings() { localStorage.setItem('germanSightWordSettings', JSON.stringify(settings)); }
+        function loadSettings() {
+            const stored = localStorage.getItem('germanSightWordSettings');
+            if (stored) settings = JSON.parse(stored);
+            numWordsInput.value = settings.numWords;
+        }
+        function saveWordList() { localStorage.setItem('germanSightWordCustomList', JSON.stringify(wordList)); }
+        function loadWordList() {
+            const stored = localStorage.getItem('germanSightWordCustomList');
+            if (stored) {
+                const customList = JSON.parse(stored);
+                if (customList.length > 0) wordList = customList;
+            }
+        }
+
+        // --- UI & GAME LOGIC ---
+        function updateHighscoreDisplay() {
+            highscoreList.innerHTML = '';
+            if (highscores.length === 0) {
+                highscoreList.innerHTML = '<li class="text-gray-500">Noch keine Rekorde! Du schaffst das!</li>';
+                return;
+            }
+            highscores.sort((a, b) => a.time - b.time);
+            highscores.slice(0, 5).forEach((score, index) => {
+                const li = document.createElement('li');
+                li.className = 'flex justify-between items-center p-2 rounded-lg';
+                li.classList.add(index === 0 ? 'bg-yellow-100' : (index % 2 === 0 ? 'bg-gray-50' : 'bg-white'));
+                li.innerHTML = `<span class="font-bold">${index + 1}.</span> <span class="text-blue-600 font-semibold">${(score.time / 1000).toFixed(2)}s</span> <span class="text-sm text-gray-500">${new Date(score.date).toLocaleDateString('de-DE')}</span>`;
+                highscoreList.appendChild(li);
+            });
+        }
+        
+        function selectWords() {
+            const shuffled = [...wordList].sort(() => 0.5 - Math.random());
+            wordsToPlay = shuffled.slice(0, settings.numWords);
+        }
+
+        function showScreen(screen) {
+            startScreen.classList.add('hidden');
+            gameScreen.classList.add('hidden');
+            scoreScreen.classList.add('hidden');
+            screen.classList.remove('hidden');
+        }
+
+        function startGame() {
+            if (Tone.context.state !== 'running') Tone.start();
+            if (wordList.length < settings.numWords) {
+                showAlert(`Die Wortliste hat nur ${wordList.length} Wörter. Bitte füge mehr Wörter hinzu oder reduziere die Wörter pro Runde in den Einstellungen.`);
+                return;
+            }
+            gameState = 'playing';
+            selectWords();
+            currentWordIndex = 0;
+            resetTimerAndProgress();
+            showScreen(gameScreen);
+            displayCurrentWord();
+            startTimer();
+            playTickTock();
+        }
+
+        function displayCurrentWord() {
+            wordDisplay.innerText = wordsToPlay[currentWordIndex];
+            progressIndicator.innerText = `Wort ${currentWordIndex + 1} / ${settings.numWords}`;
+        }
+        
+        function handleWordClick() {
+            if (gameState !== 'playing') return;
+            currentWordIndex++;
+            if (currentWordIndex < wordsToPlay.length) {
+                displayCurrentWord();
+            } else {
+                endGame();
+            }
+        }
+        
+        function endGame() {
+            gameState = 'finished';
+            stopTimer();
+            stopTickTock();
+            const finalTime = Date.now() - startTime;
+            finalTimeDisplay.innerText = `${(finalTime / 1000).toFixed(2)}s`;
+            const bestTime = highscores.length > 0 ? highscores[0].time : Infinity;
+            if (finalTime < bestTime) {
+                scoreTitle.innerText = '🎉 Neuer Rekord! 🎉';
+                highscores.push({ time: finalTime, date: new Date().toISOString() });
+                saveHighscores();
+                updateHighscoreDisplay();
+                playTadaSound();
+                triggerFireworks();
+            } else {
+                scoreTitle.innerText = 'Super gemacht!';
+            }
+            showScreen(scoreScreen);
+        }
+
+        function startTimer() {
+            startTime = Date.now();
+            timerInterval = setInterval(updateTimer, 50);
+        }
+
+        function stopTimer() { clearInterval(timerInterval); }
+
+        function updateTimer() {
+            const elapsedTime = Date.now() - startTime;
+            timerDisplay.innerText = `${(elapsedTime / 1000).toFixed(2)}s`;
+            const bestTime = highscores.length > 0 ? highscores[0].time : null;
+            
+            if (bestTime) {
+                progressBarContainer.classList.remove('hidden');
+                const progress = Math.min((elapsedTime / bestTime) * 100, 100);
+                progressBar.style.width = `${progress}%`;
+
+                if (elapsedTime < bestTime) {
+                    timerDisplay.classList.remove('text-red-500');
+                    timerDisplay.classList.add('text-green-500');
+                    progressBar.classList.remove('bg-red-500');
+                    progressBar.classList.add('bg-green-500');
+                } else {
+                    timerDisplay.classList.remove('text-green-500');
+                    timerDisplay.classList.add('text-red-500');
+                    progressBar.classList.remove('bg-green-500');
+                    progressBar.classList.add('bg-red-500');
+                }
+            } else {
+                 progressBarContainer.classList.add('hidden');
+            }
+        }
+        
+        function resetTimerAndProgress() {
+            timerDisplay.innerText = '0.00s';
+            timerDisplay.classList.remove('text-red-500', 'text-green-500');
+            progressBar.style.width = '0%';
+            progressBar.classList.remove('bg-red-500');
+            progressBar.classList.add('bg-green-500');
+        }
+
+        function resetGame() {
+            gameState = 'idle';
+            showScreen(startScreen);
+            resetTimerAndProgress();
+        }
+
+        // --- SETTINGS MODAL ---
+        function openSettings() {
+            numWordsInput.value = settings.numWords;
+            wordListEditor.value = wordList.join('\n');
+            settingsModal.classList.remove('hidden');
+        }
+
+        function saveAndCloseSettings() {
+            // Save number of words setting
+            const newNumWords = parseInt(numWordsInput.value, 10);
+            if (!isNaN(newNumWords) && newNumWords > 0) {
+                settings.numWords = newNumWords;
+                saveSettings();
+            }
+
+            // Save word list from editor
+            const newWords = wordListEditor.value
+                .split('\n')
+                .map(word => word.trim())
+                .filter(word => word.length > 0);
+
+            if (newWords.length > 0) {
+                wordList = newWords;
+                saveWordList();
+                settingsModal.classList.add('hidden');
+            } else {
+                showAlert("Die Wortliste darf nicht leer sein. Die Änderungen wurden nicht gespeichert.");
+            }
+        }
+        
+        function handleResetScores() {
+            showConfirm('Bist du sicher, dass du die ganze Bestenliste löschen möchtest?', () => {
+                highscores = [];
+                saveHighscores();
+                updateHighscoreDisplay();
+                showAlert('Bestenliste wurde zurückgesetzt.');
+            });
+        }
+
+        // --- FIREWORKS ---
+        const fireworksCanvas = document.getElementById('fireworks-canvas');
+        const ctx = fireworksCanvas.getContext('2d');
+        let particles = [];
+        let animationFrameId;
+
+        function triggerFireworks() {
+            fireworksCanvas.width = window.innerWidth;
+            fireworksCanvas.height = window.innerHeight;
+            particles = [];
+            if(animationFrameId) cancelAnimationFrame(animationFrameId);
+            
+            for (let i = 0; i < 7; i++) {
+                setTimeout(() => {
+                    createExplosion(Math.random() * fireworksCanvas.width, Math.random() * fireworksCanvas.height * 0.7);
+                }, i * 150);
+            }
+            
+            animateFireworks();
+            setTimeout(() => {
+                if(animationFrameId) cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+                ctx.clearRect(0, 0, fireworksCanvas.width, fireworksCanvas.height);
+            }, 3000);
+        }
+
+        function createExplosion(x, y) {
+            const particleCount = 120;
+            const hue = Math.random() * 360;
+            for (let i = 0; i < particleCount; i++) {
+                particles.push(new Particle(x, y, hue));
+            }
+        }
+
+        class Particle {
+            constructor(x, y, hue) {
+                this.x = x;
+                this.y = y;
+                this.angle = Math.random() * Math.PI * 2;
+                this.speed = Math.random() * 6 + 1;
+                this.friction = 0.96;
+                this.gravity = 0.5;
+                this.hue = hue + (Math.random() * 40 - 20);
+                this.brightness = Math.random() * 30 + 50;
+                this.alpha = 1;
+                this.decay = Math.random() * 0.03 + 0.015;
+            }
+
+            update() {
+                this.speed *= this.friction;
+                this.x += Math.cos(this.angle) * this.speed;
+                this.y += Math.sin(this.angle) * this.speed + this.gravity;
+                this.alpha -= this.decay;
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2.5, 0, Math.PI * 2, false);
+                ctx.fillStyle = `hsla(${this.hue}, 100%, ${this.brightness}%, ${this.alpha})`;
+                ctx.fill();
+            }
+        }
+
+        function animateFireworks() {
+            animationFrameId = requestAnimationFrame(animateFireworks);
+            ctx.clearRect(0, 0, fireworksCanvas.width, fireworksCanvas.height);
+            
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.update();
+                p.draw();
+                if (p.alpha <= p.decay) {
+                    particles.splice(i, 1);
+                }
+            }
+        }
+
+        // --- EVENT LISTENERS & INITIALIZATION ---
+        function init() {
+            initializeAudio();
+            loadSettings();
+            loadHighscores();
+            loadWordList();
+            
+            startButton.addEventListener('click', startGame);
+            wordDisplay.addEventListener('click', handleWordClick);
+            playAgainButton.addEventListener('click', resetGame);
+            
+            settingsIcon.addEventListener('click', openSettings);
+            saveSettingsButton.addEventListener('click', saveAndCloseSettings);
+            resetScoresButton.addEventListener('click', handleResetScores);
+            
+            settingsModal.addEventListener('click', (e) => {
+                if(e.target === settingsModal) {
+                    settingsModal.classList.add('hidden');
+                }
+            });
+            window.addEventListener('resize', () => {
+                fireworksCanvas.width = window.innerWidth;
+                fireworksCanvas.height = window.innerHeight;
+            });
+        }
+        
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
