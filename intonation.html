@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guitar Intonation Guide</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Nunito', sans-serif; touch-action: manipulation; background: #f3f4f6; }
+  .gauge { position: relative; height: 56px; }
+  .gauge .track { position: absolute; left: 0; right: 0; top: 24px; height: 8px; border-radius: 9999px;
+    background: linear-gradient(90deg, #f59e0b 0%, #fde68a 35%, #22c55e 48%, #22c55e 52%, #fde68a 65%, #f59e0b 100%); }
+  .gauge .center { position: absolute; left: 50%; top: 14px; width: 2px; height: 28px; background: #111827; transform: translateX(-50%); }
+  .gauge .needle { position: absolute; top: 6px; width: 6px; height: 44px; border-radius: 3px; background: #111827;
+    transform: translateX(-50%); transition: left 0.08s linear, opacity 0.2s; }
+  .gauge .tick { position: absolute; top: 36px; font-size: 10px; color: #6b7280; transform: translateX(-50%); }
+  .step-dot { width: 10px; height: 10px; border-radius: 9999px; background: #d1d5db; }
+  .step-dot.active { background: #2563eb; transform: scale(1.3); }
+  .step-dot.done { background: #22c55e; }
+  .pulse { animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1 } 50% { opacity: .45 } }
+  kbd { background:#e5e7eb; border-radius:4px; padding:0 .35em; font-family: inherit; font-weight:700; }
+</style>
+</head>
+<body class="min-h-screen text-gray-800">
+<div class="max-w-xl mx-auto p-4 pb-16">
+
+  <header class="flex items-center justify-between mb-3">
+    <h1 class="text-2xl font-black">Intonation Guide</h1>
+    <button id="btn-settings" class="text-sm font-bold text-blue-700 underline">Settings</button>
+  </header>
+
+  <div id="step-dots" class="flex items-center gap-2 mb-4"></div>
+
+  <!-- Settings panel -->
+  <section id="settings" class="hidden bg-white rounded-2xl shadow p-4 mb-4 space-y-3">
+    <h2 class="font-black text-lg">Settings</h2>
+    <label class="block text-sm font-bold">Reference pitch (A4)
+      <input id="set-a4" type="number" min="400" max="480" step="0.5" value="440" class="mt-1 w-full border rounded-lg p-2 font-normal">
+    </label>
+    <label class="block text-sm font-bold">Scale length
+      <select id="set-scale" class="mt-1 w-full border rounded-lg p-2 font-normal">
+        <option value="648">25.5" (Fender Tele / Strat) = 648 mm</option>
+        <option value="628.65">24.75" (Gibson) = 629 mm</option>
+        <option value="635">25" (PRS) = 635 mm</option>
+        <option value="864">34" (bass) = 864 mm</option>
+      </select>
+    </label>
+    <label class="block text-sm font-bold">Tuning
+      <select id="set-tuning" class="mt-1 w-full border rounded-lg p-2 font-normal">
+        <option value="standard">Standard (E A D G B E)</option>
+        <option value="eb">E♭ standard (half step down)</option>
+        <option value="dropd">Drop D</option>
+        <option value="bass4">4-string bass (E A D G)</option>
+      </select>
+    </label>
+    <label class="block text-sm font-bold">Good enough when within
+      <select id="set-tol" class="mt-1 w-full border rounded-lg p-2 font-normal">
+        <option value="1">±1 cent (fussy)</option>
+        <option value="2" selected>±2 cents (recommended)</option>
+        <option value="3">±3 cents (relaxed)</option>
+      </select>
+    </label>
+    <div class="flex gap-2 pt-1">
+      <button id="btn-reset" class="text-sm font-bold text-red-700 underline">Clear saved results</button>
+    </div>
+  </section>
+
+  <!-- Live tuner card (shown on tuner + measure steps) -->
+  <section id="tuner-card" class="hidden bg-white rounded-2xl shadow p-4 mb-4">
+    <div class="flex items-baseline justify-between">
+      <div>
+        <span id="live-note" class="text-4xl font-black">--</span>
+        <span id="live-octave" class="text-lg text-gray-500 font-bold"></span>
+      </div>
+      <div class="text-right">
+        <div id="live-cents" class="text-2xl font-black">--</div>
+        <div class="text-xs text-gray-500">cents</div>
+      </div>
+    </div>
+    <div class="gauge mt-1">
+      <div class="track"></div>
+      <div class="center"></div>
+      <div class="tick" style="left:0%">-50</div>
+      <div class="tick" style="left:25%">-25</div>
+      <div class="tick" style="left:50%">0</div>
+      <div class="tick" style="left:75%">+25</div>
+      <div class="tick" style="left:100%">+50</div>
+      <div id="needle" class="needle" style="left:50%; opacity:0"></div>
+    </div>
+    <div class="flex justify-between text-xs text-gray-500 mt-1">
+      <span id="live-hz">-- Hz</span>
+      <span id="live-level">level: --</span>
+      <span id="mic-state">mic off</span>
+    </div>
+  </section>
+
+  <!-- Main step content -->
+  <main id="content" class="bg-white rounded-2xl shadow p-5 min-h-[260px]"></main>
+
+  <nav class="flex justify-between mt-4">
+    <button id="btn-back" class="px-4 py-2 rounded-xl font-bold bg-gray-200">Back</button>
+    <button id="btn-next" class="px-5 py-2 rounded-xl font-bold bg-blue-600 text-white">Next</button>
+  </nav>
+
+  <p class="text-xs text-gray-500 mt-6">
+    Pitch detection runs in your browser (McLeod pitch method over the microphone). Nothing is uploaded.
+    For the cleanest readings plug the guitar into an audio interface and pick it as the input, or use a quiet room.
+  </p>
+</div>
+
+<script>
+// ---------- Tunings & settings ----------
+const TUNINGS = {
+  standard: [{n:'E',o:2},{n:'A',o:2},{n:'D',o:3},{n:'G',o:3},{n:'B',o:3},{n:'E',o:4}],
+  eb:       [{n:'D#',o:2},{n:'G#',o:2},{n:'C#',o:3},{n:'F#',o:3},{n:'A#',o:3},{n:'D#',o:4}],
+  dropd:    [{n:'D',o:2},{n:'A',o:2},{n:'D',o:3},{n:'G',o:3},{n:'B',o:3},{n:'E',o:4}],
+  bass4:    [{n:'E',o:1},{n:'A',o:1},{n:'D',o:2},{n:'G',o:2}],
+};
+const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const SCREW_PITCH_MM = 0.6;   // typical intonation screw thread pitch, estimate
+
+const settings = Object.assign({ a4: 440, scale: 648, tuning: 'standard', tol: 2 },
+  JSON.parse(localStorage.getItem('intonation.settings') || '{}'));
+let results = JSON.parse(localStorage.getItem('intonation.results') || '{}'); // key: string index -> {harm, fret, diff, history:[]}
+let checks = JSON.parse(localStorage.getItem('intonation.checks') || '{}');
+
+function save() {
+  localStorage.setItem('intonation.settings', JSON.stringify(settings));
+  localStorage.setItem('intonation.results', JSON.stringify(results));
+  localStorage.setItem('intonation.checks', JSON.stringify(checks));
+}
+
+function noteFreq(name, octave) {
+  const semis = NOTE_NAMES.indexOf(name) + 12 * (octave + 1) - 69; // relative to A4 (MIDI 69)
+  return settings.a4 * Math.pow(2, semis / 12);
+}
+function strings() { return TUNINGS[settings.tuning]; }
+function stringLabel(i) { const s = strings()[i]; return `${s.n}${s.o}`; }
+function centsOff(freq, target) {
+  let c = 1200 * Math.log2(freq / target);
+  while (c > 600) c -= 1200;     // fold octave errors onto the target
+  while (c < -600) c += 1200;
+  return c;
+}
+function freqToNote(freq) {
+  const midi = 69 + 12 * Math.log2(freq / settings.a4);
+  const r = Math.round(midi);
+  return { name: NOTE_NAMES[((r % 12) + 12) % 12], octave: Math.floor(r / 12) - 1, cents: (midi - r) * 100 };
+}
+
+// ---------- Pitch detection: McLeod Pitch Method (NSDF) ----------
+const MIN_HZ = 30, MAX_HZ = 1600;
+function detectPitch(buf, sr) {
+  const n = buf.length;
+  let rms = 0;
+  for (let i = 0; i < n; i++) rms += buf[i] * buf[i];
+  rms = Math.sqrt(rms / n);
+  if (rms < 0.004) return { freq: 0, clarity: 0, rms };
+
+  const maxTau = Math.min(n - 1, Math.floor(sr / MIN_HZ));
+  const minTau = Math.max(2, Math.floor(sr / MAX_HZ));
+  const nsdf = new Float32Array(maxTau + 1);
+  for (let tau = minTau; tau <= maxTau; tau++) {
+    let acf = 0, div = 0;
+    for (let i = 0, m = n - tau; i < m; i++) {
+      const a = buf[i], b = buf[i + tau];
+      acf += a * b; div += a * a + b * b;
+    }
+    nsdf[tau] = div > 0 ? (2 * acf) / div : 0;
+  }
+  // key maxima between positive zero crossings
+  const peaks = [];
+  let tau = minTau;
+  while (tau <= maxTau && nsdf[tau] > 0) tau++;        // skip initial positive lobe
+  while (tau <= maxTau) {
+    while (tau <= maxTau && nsdf[tau] <= 0) tau++;     // find positive crossing
+    let best = -1, bestV = -Infinity;
+    while (tau <= maxTau && nsdf[tau] > 0) {
+      if (nsdf[tau] > bestV) { bestV = nsdf[tau]; best = tau; }
+      tau++;
+    }
+    if (best > 0) peaks.push(best);
+  }
+  if (!peaks.length) return { freq: 0, clarity: 0, rms };
+  let maxV = -Infinity;
+  for (const p of peaks) maxV = Math.max(maxV, nsdf[p]);
+  const thresh = 0.88 * maxV;
+  let chosen = peaks.find(p => nsdf[p] >= thresh);
+  // parabolic interpolation
+  let t = chosen;
+  if (chosen > 0 && chosen < maxTau) {
+    const a = nsdf[chosen - 1], b = nsdf[chosen], c = nsdf[chosen + 1];
+    const d = a - 2 * b + c;
+    if (d !== 0) t = chosen + (a - c) / (2 * d);
+  }
+  return { freq: sr / t, clarity: nsdf[chosen], rms };
+}
+
+// ---------- Audio ----------
+let audioCtx = null, analyser = null, micStream = null, timeBuf = null, rafId = null;
+let live = { freq: 0, clarity: 0, rms: 0 };
+let capture = null; // { target, samples:[], started, resolve }
+
+async function startMic() {
+  if (audioCtx) { if (audioCtx.state === 'suspended') await audioCtx.resume(); return true; }
+  try {
+    micStream = await navigator.mediaDevices.getUserMedia({ audio: {
+      echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+  } catch (e) {
+    $('#mic-state').textContent = 'mic blocked';
+    alert('Microphone access is needed for live readings. You can still enter readings from a tuner by hand.\n\n' + e.message);
+    return false;
+  }
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const src = audioCtx.createMediaStreamSource(micStream);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 4096;
+  analyser.smoothingTimeConstant = 0;
+  src.connect(analyser);
+  timeBuf = new Float32Array(analyser.fftSize);
+  $('#mic-state').textContent = 'mic on';
+  loop();
+  return true;
+}
+
+function loop() {
+  rafId = requestAnimationFrame(loop);
+  analyser.getFloatTimeDomainData(timeBuf);
+  live = detectPitch(timeBuf, audioCtx.sampleRate);
+  renderLive();
+  if (capture) {
+    const c = capture;
+    if (live.freq > 0 && live.clarity > 0.9) {
+      const cents = centsOff(live.freq, c.target);
+      if (Math.abs(cents) < 150) c.samples.push(cents);
+    }
+    const elapsed = performance.now() - c.started;
+    const pct = Math.min(100, Math.max(elapsed / c.maxMs, c.samples.length / c.want) * 100);
+    const bar = $('#cap-bar'); if (bar) bar.style.width = pct + '%';
+    if (c.samples.length >= c.want || elapsed > c.maxMs) {
+      capture = null;
+      c.resolve(c.samples);
+    }
+  }
+}
+
+function renderLive() {
+  const needle = $('#needle');
+  if (live.freq > 0 && live.clarity > 0.8) {
+    const nt = freqToNote(live.freq);
+    $('#live-note').textContent = nt.name;
+    $('#live-octave').textContent = nt.octave;
+    $('#live-cents').textContent = (nt.cents >= 0 ? '+' : '') + nt.cents.toFixed(0);
+    $('#live-cents').className = 'text-2xl font-black ' + (Math.abs(nt.cents) <= settings.tol ? 'text-green-600' : 'text-gray-800');
+    $('#live-hz').textContent = live.freq.toFixed(1) + ' Hz';
+    needle.style.left = (50 + Math.max(-50, Math.min(50, nt.cents))) + '%';
+    needle.style.opacity = 1;
+  } else {
+    needle.style.opacity = 0.15;
+  }
+  const lvl = Math.min(1, live.rms * 12);
+  $('#live-level').textContent = 'level: ' + '▮'.repeat(Math.round(lvl * 8)).padEnd(8, '▯');
+}
+
+function measure(target, want = 24, maxMs = 3500) {
+  return new Promise(resolve => {
+    capture = { target, samples: [], started: performance.now(), resolve, want, maxMs };
+  });
+}
+function median(arr) {
+  const a = [...arr].sort((x, y) => x - y);
+  const m = a.length >> 1;
+  return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+}
+
+// ---------- Advice ----------
+function advice(diff) {
+  // diff = fretted cents - harmonic cents. Positive => fretted sharp => string too short => move saddle BACK.
+  const absd = Math.abs(diff);
+  const mm = absd * settings.scale / 1731;         // 1200*log2(1+dL/L) ≈ 1731*dL/L
+  const turns = mm / SCREW_PITCH_MM;
+  if (absd <= settings.tol) return { ok: true, text: 'Within tolerance. This string is intonated.', mm, turns };
+  const dir = diff > 0
+    ? { word: 'SHARP', move: 'back, away from the neck (longer string)', screw: 'clockwise (tighten) on a Fender-style bridge' }
+    : { word: 'FLAT',  move: 'forward, toward the neck (shorter string)', screw: 'counter-clockwise (loosen) on a Fender-style bridge' };
+  return { ok: false, dir, mm, turns,
+    text: `Fretted note is ${absd.toFixed(1)} cents ${dir.word} of the harmonic. Move the saddle ${dir.move}: turn the intonation screw ${dir.screw}.` };
+}
+
+// ---------- Steps ----------
+const $ = sel => document.querySelector(sel);
+const S = strings;
+let stepIndex = 0;
+let subState = {}; // per-step scratch
+
+const steps = [
+  { id: 'prep', title: 'Before you start', needsTuner: false, render: renderPrep },
+  { id: 'relief', title: 'Neck relief', needsTuner: false, render: () => renderCheck('relief',
+      'Neck relief',
+      [`Hold the guitar in playing position.`,
+       `Press the low string at the <b>1st fret</b> and at the <b>last fret</b> (a capo on fret 1 helps).`,
+       `Look at the gap between the string and the top of the <b>7th–8th fret</b>. You want a sliver of daylight, roughly the thickness of a business card (0.2–0.3 mm).`,
+       `No gap at all (string touching the fret) = back-bow. A big gap (> 0.5 mm) = too much relief.`],
+      `If the relief is far off, adjust the truss rod first (small turns, ¼ turn max, let it settle) or have a tech do it. Intonation moves when relief moves, so get this right before measuring.`) },
+  { id: 'action', title: 'Action', needsTuner: false, render: () => renderCheck('action',
+      'String height (action)',
+      [`Measure at the <b>12th fret</b> from the top of the fret to the underside of the string.`,
+       `Typical Fender spec: about <b>1.6 mm (4/64")</b> on all strings, or 1.6 mm treble / 2.0 mm bass if you like a bit more room.`,
+       `Adjust with the two small hex screws on each saddle. Keep each saddle level.`],
+      `Action changes intonation too (higher action = you stretch the string more when fretting = sharper). Set it before intonating, then leave it alone.`) },
+  { id: 'tune', title: 'Tune up', needsTuner: true, render: renderTune },
+  { id: 'measure', title: 'Intonate each string', needsTuner: true, render: renderMeasure },
+  { id: 'summary', title: 'Summary', needsTuner: false, render: renderSummary },
+];
+
+function renderDots() {
+  $('#step-dots').innerHTML = steps.map((s, i) =>
+    `<div class="step-dot ${i === stepIndex ? 'active' : ''} ${i < stepIndex ? 'done' : ''}" title="${s.title}"></div>`).join('')
+    + `<span class="ml-2 text-sm font-bold text-gray-600">${stepIndex + 1}/${steps.length} · ${steps[stepIndex].title}</span>`;
+}
+
+function render() {
+  const st = steps[stepIndex];
+  renderDots();
+  $('#tuner-card').classList.toggle('hidden', !st.needsTuner);
+  if (st.needsTuner && !audioCtx) { /* started lazily by button */ }
+  $('#content').innerHTML = '';
+  st.render();
+  $('#btn-back').style.visibility = stepIndex === 0 ? 'hidden' : 'visible';
+  $('#btn-next').textContent = stepIndex === steps.length - 1 ? 'Start over' : 'Next';
+}
+
+function renderPrep() {
+  $('#content').innerHTML = `
+    <h2 class="text-xl font-black mb-2">Before you start</h2>
+    <p class="mb-3">Intonation is the <b>last</b> step of a setup. Doing it on old strings or a mis-set neck is wasted effort. Tick these off:</p>
+    <ul class="space-y-2">
+      ${checkbox('strings', '<b>Fresh strings</b>, stretched and settled (play them for a day if you can). Worn strings go sharp up the neck no matter where the saddles are.')}
+      ${checkbox('gauge', 'The <b>gauge you actually play</b>. Changing gauge later changes intonation.')}
+      ${checkbox('tools', 'A Phillips screwdriver for the saddle screws, and the hex key for action if needed.')}
+      ${checkbox('position', 'You will measure in <b>playing position</b> (sitting or strapped on), not flat on a table. Gravity on the neck shifts the readings.')}
+      ${checkbox('mic', 'Microphone: quiet room, phone close to the strings, <b>or</b> plug into an interface and pick it as the input. A clip-on tuner also works: every measure step has a manual entry.')}
+    </ul>
+    <p class="mt-4 text-sm text-gray-600">Saved progress stays in this browser. Use <b>Settings</b> for reference pitch, scale length and tuning.</p>`;
+}
+function checkbox(key, html) {
+  const on = checks[key] ? 'checked' : '';
+  return `<li class="flex gap-3 items-start"><input type="checkbox" data-check="${key}" ${on} class="mt-1 w-5 h-5"><span>${html}</span></li>`;
+}
+
+function renderCheck(key, title, bullets, note) {
+  const v = checks[key];
+  $('#content').innerHTML = `
+    <h2 class="text-xl font-black mb-2">${title}</h2>
+    <ol class="list-decimal ml-5 space-y-2 mb-4">${bullets.map(b => `<li>${b}</li>`).join('')}</ol>
+    <p class="text-sm bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-4">${note}</p>
+    <div class="flex gap-2">
+      <button data-check-val="ok" class="px-4 py-2 rounded-xl font-bold ${v === 'ok' ? 'bg-green-600 text-white' : 'bg-gray-200'}">Looks good</button>
+      <button data-check-val="adjusted" class="px-4 py-2 rounded-xl font-bold ${v === 'adjusted' ? 'bg-green-600 text-white' : 'bg-gray-200'}">Adjusted it</button>
+      <button data-check-val="tech" class="px-4 py-2 rounded-xl font-bold ${v === 'tech' ? 'bg-red-600 text-white' : 'bg-gray-200'}">Needs a tech</button>
+    </div>`;
+  $('#content').querySelectorAll('[data-check-val]').forEach(b => b.onclick = () => { checks[key] = b.dataset.checkVal; save(); render(); });
+}
+
+function renderTune() {
+  const rows = S().map((s, i) => {
+    const f = noteFreq(s.n, s.o);
+    return `<button data-str="${i}" class="str-btn flex justify-between px-3 py-2 rounded-xl bg-gray-100 font-bold">
+      <span>String ${S().length - i}: ${s.n}${s.o}</span><span class="text-gray-500 font-normal">${f.toFixed(2)} Hz</span></button>`;
+  });
+  $('#content').innerHTML = `
+    <h2 class="text-xl font-black mb-2">Tune all strings to pitch</h2>
+    <p class="mb-3">Tune each open string. The tuner above shows the nearest note and how far off you are. Aim for the green zone.</p>
+    <button id="btn-mic" class="w-full py-3 mb-3 rounded-xl font-bold ${audioCtx ? 'bg-green-600' : 'bg-blue-600'} text-white">${audioCtx ? 'Microphone is on' : 'Turn on microphone'}</button>
+    <div class="grid grid-cols-2 gap-2">${rows.join('')}</div>
+    <p class="mt-3 text-sm text-gray-600">Tip: tune <i>up</i> to pitch. If you overshoot, go below and come back up so the string is not stuck at the nut.</p>`;
+  $('#btn-mic').onclick = () => startMic().then(render);
+}
+
+function currentString() { return subState.str ?? 0; }
+
+function renderMeasure() {
+  const i = currentString();
+  const s = S()[i];
+  const target = noteFreq(s.n, s.o) * 2; // 12th fret = one octave up
+  const r = results[i] || {};
+  const phase = subState.phase || 'harm';
+  const n = S().length;
+
+  const tabs = S().map((st, k) => {
+    const rr = results[k];
+    const cls = k === i ? 'bg-blue-600 text-white' : rr ? (rr.ok ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800') : 'bg-gray-100';
+    return `<button data-tab="${k}" class="px-2 py-1 rounded-lg text-sm font-bold ${cls}">${st.n}${st.o}</button>`;
+  }).join('');
+
+  let body = '';
+  if (phase === 'harm') {
+    body = `
+      <h3 class="font-black text-lg mb-1">Step A: 12th fret harmonic</h3>
+      <p class="mb-3">Touch the ${s.n} string lightly <b>directly above the 12th fret wire</b> (not behind it), pluck near the bridge, lift your finger. Let it ring, then press <b>Measure</b>.</p>
+      ${r.harm != null ? `<p class="text-sm mb-2">Last harmonic reading: <b>${fmt(r.harm)} ¢</b></p>` : ''}
+      ${measureButtons('harm')}`;
+  } else if (phase === 'fret') {
+    body = `
+      <h3 class="font-black text-lg mb-1">Step B: 12th fret, fretted</h3>
+      <p class="mb-3">Now <b>fret</b> the ${s.n} string at the 12th fret with normal playing pressure, no bending, no vibrato. Pluck, let it settle for half a second, press <b>Measure</b>.</p>
+      <p class="text-sm mb-2">Harmonic: <b>${fmt(r.harm)} ¢</b>${r.fret != null ? ` · last fretted: <b>${fmt(r.fret)} ¢</b>` : ''}</p>
+      ${measureButtons('fret')}`;
+  } else {
+    const a = advice(r.diff);
+    body = `
+      <h3 class="font-black text-lg mb-1">Result for ${s.n}${s.o}</h3>
+      <div class="grid grid-cols-3 gap-2 text-center mb-3">
+        <div class="bg-gray-100 rounded-xl p-2"><div class="text-xs text-gray-500">harmonic</div><div class="font-black">${fmt(r.harm)} ¢</div></div>
+        <div class="bg-gray-100 rounded-xl p-2"><div class="text-xs text-gray-500">fretted</div><div class="font-black">${fmt(r.fret)} ¢</div></div>
+        <div class="rounded-xl p-2 ${a.ok ? 'bg-green-100' : 'bg-yellow-100'}"><div class="text-xs text-gray-500">difference</div><div class="font-black text-lg">${fmt(r.diff)} ¢</div></div>
+      </div>
+      <p class="mb-2 ${a.ok ? 'text-green-700 font-bold' : ''}">${a.text}</p>
+      ${a.ok ? '' : `<p class="text-sm bg-blue-50 border border-blue-200 rounded-xl p-3 mb-3">
+        Estimated travel: about <b>${a.mm.toFixed(1)} mm</b>, roughly <b>${a.turns < 1 ? 'half a turn' : a.turns.toFixed(1) + ' turns'}</b> of the screw (estimate, screws vary).
+        Go in half-turn steps. After every adjustment: <b>retune the open string</b>, then re-measure. If the string hangs up, press down on the saddle gently as you turn.</p>`}
+      ${r.history && r.history.length > 1 ? `<p class="text-xs text-gray-500 mb-2">History: ${r.history.map(h => fmt(h)).join(' → ')} ¢</p>` : ''}
+      <div class="flex flex-wrap gap-2">
+        <button id="btn-remeasure" class="px-4 py-2 rounded-xl font-bold bg-blue-600 text-white">${a.ok ? 'Measure again' : 'Adjusted, measure again'}</button>
+        ${i < n - 1 ? `<button id="btn-nextstr" class="px-4 py-2 rounded-xl font-bold ${a.ok ? 'bg-green-600 text-white' : 'bg-gray-200'}">Next string →</button>`
+                    : `<button id="btn-finish" class="px-4 py-2 rounded-xl font-bold ${a.ok ? 'bg-green-600 text-white' : 'bg-gray-200'}">Summary →</button>`}
+      </div>`;
+  }
+
+  $('#content').innerHTML = `
+    <div class="flex flex-wrap gap-1 mb-3">${tabs}</div>
+    <div class="flex justify-between items-baseline mb-2">
+      <h2 class="text-xl font-black">String ${n - i} · ${s.n}${s.o}</h2>
+      <span class="text-sm text-gray-500">12th fret target: ${freqToNote(target).name}${freqToNote(target).octave} · ${target.toFixed(1)} Hz</span>
+    </div>
+    ${audioCtx ? '' : `<button id="btn-mic" class="w-full py-3 mb-3 rounded-xl font-bold bg-blue-600 text-white">Turn on microphone</button>`}
+    ${body}`;
+
+  $('#content').querySelectorAll('[data-tab]').forEach(b => b.onclick = () => { subState = { str: +b.dataset.tab, phase: 'harm' }; render(); });
+  const mic = $('#btn-mic'); if (mic) mic.onclick = () => startMic().then(render);
+  const mb = $('#btn-measure'); if (mb) mb.onclick = () => doMeasure(i, phase, target);
+  const man = $('#btn-manual'); if (man) man.onclick = () => {
+    const v = parseFloat($('#manual-cents').value);
+    if (isNaN(v)) return;
+    recordReading(i, phase, v);
+  };
+  const rm = $('#btn-remeasure'); if (rm) rm.onclick = () => { subState.phase = 'harm'; render(); };
+  const ns = $('#btn-nextstr'); if (ns) ns.onclick = () => { subState = { str: i + 1, phase: 'harm' }; render(); };
+  const fin = $('#btn-finish'); if (fin) fin.onclick = () => { stepIndex = steps.length - 1; subState = {}; render(); };
+}
+
+function measureButtons(phase) {
+  return `
+    <button id="btn-measure" class="w-full py-3 rounded-xl font-black text-lg bg-blue-600 text-white" ${audioCtx ? '' : 'disabled style="opacity:.5"'}>Measure</button>
+    <div class="h-2 bg-gray-200 rounded-full mt-2 overflow-hidden"><div id="cap-bar" class="h-2 bg-blue-500" style="width:0%"></div></div>
+    <div id="cap-msg" class="text-sm text-gray-600 mt-1 min-h-[1.25rem]"></div>
+    <details class="mt-3 text-sm"><summary class="cursor-pointer font-bold text-gray-600">Enter from a clip-on tuner instead</summary>
+      <div class="flex gap-2 mt-2">
+        <input id="manual-cents" type="number" step="0.5" placeholder="cents, e.g. +6 or -3" class="border rounded-lg p-2 flex-1">
+        <button id="btn-manual" class="px-3 py-2 rounded-lg font-bold bg-gray-200">Save</button>
+      </div>
+      <p class="text-xs text-gray-500 mt-1">Read the cents offset your tuner shows for the ${phase === 'harm' ? 'harmonic' : 'fretted note'}.</p>
+    </details>`;
+}
+
+async function doMeasure(i, phase, target) {
+  const btn = $('#btn-measure'); const msg = $('#cap-msg');
+  btn.disabled = true; btn.classList.add('pulse'); btn.textContent = 'Listening… pluck now';
+  msg.textContent = '';
+  const samples = await measure(target);
+  btn.classList.remove('pulse');
+  if (samples.length < 8) {
+    btn.disabled = false; btn.textContent = 'Measure';
+    msg.innerHTML = `<span class="text-red-700 font-bold">Could not get a stable reading</span> (${samples.length} usable frames). Pluck a little harder, move the mic closer, and make sure the note is near ${freqToNote(target).name}.`;
+    $('#cap-bar').style.width = '0%';
+    return;
+  }
+  // use the median of the later half of samples (note has settled after the attack)
+  const settled = samples.slice(Math.floor(samples.length / 3));
+  recordReading(i, phase, median(settled));
+}
+
+function recordReading(i, phase, cents) {
+  const r = results[i] || { history: [] };
+  r[phase] = cents;
+  if (phase === 'harm') { subState.phase = 'fret'; r.fret = null; r.diff = null; }
+  else {
+    r.diff = r.fret - r.harm;
+    r.ok = Math.abs(r.diff) <= settings.tol;
+    r.history = (r.history || []).concat([r.diff]).slice(-8);
+    subState.phase = 'result';
+  }
+  results[i] = r; save(); render();
+}
+
+function fmt(c) { if (c == null || isNaN(c)) return '--'; return (c >= 0 ? '+' : '') + c.toFixed(1); }
+
+function renderSummary() {
+  const rows = S().map((s, i) => {
+    const r = results[i];
+    if (!r || r.diff == null) return `<tr><td class="py-1 font-bold">${s.n}${s.o}</td><td colspan="3" class="text-gray-400">not measured</td></tr>`;
+    const a = advice(r.diff);
+    return `<tr class="${a.ok ? '' : 'bg-yellow-50'}">
+      <td class="py-1 font-bold">${s.n}${s.o}</td>
+      <td class="text-right">${fmt(r.diff)} ¢</td>
+      <td class="pl-3">${a.ok ? '<span class="text-green-700 font-bold">✓ in tune</span>' : `${a.dir.word.toLowerCase()} → saddle ${r.diff > 0 ? 'back' : 'forward'} ~${a.mm.toFixed(1)} mm`}</td>
+    </tr>`;
+  }).join('');
+  const allOk = S().every((s, i) => results[i] && results[i].ok);
+  const bad = Object.values(checks).includes('tech');
+  $('#content').innerHTML = `
+    <h2 class="text-xl font-black mb-2">Summary</h2>
+    <table class="w-full text-sm mb-4"><thead><tr class="text-gray-500 text-xs"><th class="text-left">String</th><th class="text-right">Fretted − harmonic</th><th class="text-left pl-3">Action</th></tr></thead><tbody>${rows}</tbody></table>
+    ${allOk ? `<p class="bg-green-100 rounded-xl p-3 font-bold text-green-800 mb-3">All strings within ±${settings.tol} cents. Play a few chords up the neck: if a chord at the 10th fret rings as sweetly as an open chord, you are done.</p>`
+            : `<p class="bg-yellow-50 border border-yellow-200 rounded-xl p-3 mb-3 text-sm">Some strings still need work. Go back to the measure step and pick the string from the tabs. Remember to retune the open string after every saddle move.</p>`}
+    ${bad ? `<p class="bg-red-50 border border-red-200 rounded-xl p-3 mb-3 text-sm">You flagged a relief or action problem for a tech. Intonation readings taken before that is fixed will drift once it is.</p>` : ''}
+    <details class="text-sm"><summary class="cursor-pointer font-bold text-gray-600">When intonation refuses to settle</summary>
+      <ul class="list-disc ml-5 mt-2 space-y-1">
+        <li>Saddle already at the end of its travel: wrong string gauge for the setup, or (rarely) a bridge mounted off-spec.</li>
+        <li>Open chords sharp but 12th fret fine: nut slots too high. That is a nut job, not a saddle job.</li>
+        <li>Readings jump around: old strings, a loose saddle screw, or a bad string. Replace that string.</li>
+        <li>Everything is 2–3 cents sharp at the 1st–3rd frets even with perfect 12th fret: normal for a non-compensated nut.</li>
+      </ul></details>
+    <button id="btn-copy" class="mt-4 text-sm font-bold text-blue-700 underline">Copy results as text</button>`;
+  $('#btn-copy').onclick = () => {
+    const txt = S().map((s, i) => { const r = results[i]; return `${s.n}${s.o}: ${r && r.diff != null ? fmt(r.diff) + ' cents' : 'not measured'}`; }).join('\n');
+    navigator.clipboard.writeText(`Intonation ${new Date().toLocaleDateString()} (A4=${settings.a4}, scale ${settings.scale} mm)\n${txt}`);
+    $('#btn-copy').textContent = 'Copied';
+  };
+}
+
+// ---------- Wiring ----------
+$('#btn-next').onclick = () => {
+  if (stepIndex === steps.length - 1) { stepIndex = 0; subState = {}; }
+  else stepIndex++;
+  if (steps[stepIndex].id === 'measure') subState = { str: 0, phase: 'harm' };
+  render();
+};
+$('#btn-back').onclick = () => { if (stepIndex > 0) { stepIndex--; subState = {}; render(); } };
+$('#content').addEventListener('change', e => {
+  if (e.target.dataset.check) { checks[e.target.dataset.check] = e.target.checked; save(); }
+});
+$('#btn-settings').onclick = () => $('#settings').classList.toggle('hidden');
+$('#set-a4').value = settings.a4; $('#set-scale').value = settings.scale; $('#set-tuning').value = settings.tuning; $('#set-tol').value = settings.tol;
+$('#set-a4').onchange = e => { settings.a4 = parseFloat(e.target.value) || 440; save(); render(); };
+$('#set-scale').onchange = e => { settings.scale = parseFloat(e.target.value); save(); render(); };
+$('#set-tuning').onchange = e => { settings.tuning = e.target.value; results = {}; save(); render(); };
+$('#set-tol').onchange = e => { settings.tol = parseFloat(e.target.value); save(); render(); };
+$('#btn-reset').onclick = () => { if (confirm('Clear all saved readings and checklist?')) { results = {}; checks = {}; save(); render(); } };
+
+render();
+</script>
+</body>
+</html>
